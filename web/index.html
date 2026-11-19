@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>побазарь)</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+
+<!-- ============ landing / join ============ -->
+<section id="landing" class="landing">
+  <div class="card">
+    <div class="langsw" id="langSw"><button type="button" data-lang="ru">ru</button><button type="button" data-lang="en">en</button></div>
+    <div class="brand"><img src="/icon.svg" alt=""><span>побазарь)</span></div>
+    <p class="tag" id="landingTag" data-th="tag">голос, демка со звуком и чат со сквозным шифрованием.<br>без аккаунтов, логов и телеметрии.</p>
+
+    <label class="field">
+      <span data-t="nick">ник</span>
+      <input id="nickInput" maxlength="32" autocomplete="off" spellcheck="false" placeholder="как тебя звать" data-tp="nickPh">
+    </label>
+    <label class="field" id="roomNameField">
+      <span data-th="roomName">название комнаты <em>(необязательно)</em></span>
+      <input id="roomNameInput" maxlength="40" autocomplete="off" spellcheck="false" placeholder="uwu">
+    </label>
+    <label class="check">
+      <input type="checkbox" id="relayInput">
+      <span data-th="relayLanding">скрывать мой ip от собеседников <em>(трафик через relay-сервер, он всё равно зашифрован)</em></span>
+    </label>
+
+    <button id="goBtn" class="btn primary big" data-t="create">создать комнату</button>
+    <p class="err" id="landingErr" hidden></p>
+    <p class="fine" data-th="fine">ключ комнаты живёт только в ссылке после <code>#</code> — браузер не отправляет его на сервер. сервер видит лишь зашифрованные байты.</p>
+  </div>
+</section>
+
+<!-- ============ room ============ -->
+<section id="room" class="room" hidden>
+  <header class="top">
+    <div class="roomname"><small data-t="room">комната</small><b id="roomTitle"></b></div>
+    <div class="topmid">
+      <span class="pill" id="timer">0:00</span>
+      <span class="pill lock" data-tt="e2eeTip" title="сквозное шифрование: AES-256-GCM для сигналинга и чата, DTLS-SRTP p2p для медиа">🔒 e2ee</span>
+      <span class="pill warn" id="netState" hidden data-t="reconnecting">переподключение…</span>
+    </div>
+    <div class="topright">
+      <button class="btn" id="copyBtn"><i data-i="link"></i><span data-t="copyLink">скопировать ссылку</span></button>
+      <button class="btn danger" id="leaveBtn"><i data-i="leave"></i><span data-t="leave">выйти</span></button>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="chat" id="chatPanel">
+      <div class="msgs" id="msgs"></div>
+      <div class="composer" id="composer">
+        <button class="iconbtn" id="attachBtn" title="файл (до 8 МБ)" data-tt="attach"><i data-i="clip"></i></button>
+        <input type="file" id="fileInput" hidden multiple>
+        <textarea id="msgInput" rows="1" maxlength="20000" placeholder="сообщение" data-tp="msgPh"></textarea>
+        <button class="btn primary" id="sendBtn"><i data-i="send"></i></button>
+      </div>
+    </aside>
+
+    <main class="stage" id="stage">
+      <div class="tiles" id="tiles"></div>
+      <div class="lobby" id="lobby"></div>
+    </main>
+
+    <aside class="members" id="membersPanel">
+      <div class="mhead"><span data-t="inRoom">в комнате</span> <span id="memberCount">1</span></div>
+      <ul id="memberList"></ul>
+    </aside>
+  </div>
+
+  <footer class="bar">
+    <div class="barl">
+      <button class="btn" id="chatToggle"><i data-i="chat"></i><span data-t="chat">чат</span><b class="badge" id="unread" hidden></b></button>
+    </div>
+    <div class="barc">
+      <button class="btn" id="muteBtn" title="ctrl+shift+m"><i data-i="mic"></i><span>микрофон</span></button>
+      <button class="btn" id="deafBtn" title="ctrl+shift+d"><i data-i="head"></i><span>звук</span></button>
+      <button class="btn" id="camBtn"><i data-i="cam"></i><span data-t="camera">камера</span></button>
+      <button class="btn" id="shareBtn"><i data-i="screen"></i><span>демка</span></button>
+      <input class="nickbar" id="nickBar" maxlength="32" spellcheck="false" title="твой ник" data-tt="yourNick">
+      <button class="iconbtn" id="settingsBtn" title="настройки" data-tt="settings"><i data-i="gear"></i></button>
+    </div>
+    <div class="barr">
+      <button class="btn" id="membersToggle"><i data-i="users"></i><span data-t="members">участники</span></button>
+    </div>
+  </footer>
+
+  <div id="audioSink" hidden></div>
+</section>
+
+<!-- ============ settings ============ -->
+<dialog id="settings">
+  <form method="dialog" class="dlg">
+    <h3 data-t="settings">настройки</h3>
+    <label class="field"><span data-t="language">язык</span>
+      <select id="langSel"><option value="ru">русский</option><option value="en">english</option></select>
+    </label>
+    <label class="field"><span data-t="mic">микрофон</span><select id="micSel"></select></label>
+    <label class="field" id="outField"><span data-t="output">вывод звука</span><select id="outSel"></select></label>
+    <label class="check"><input type="checkbox" id="nsInput"><span data-t="ns">шумоподавление микрофона</span></label>
+    <label class="field"><span data-t="quality">качество демки</span>
+      <select id="qualSel">
+        <option value="720p30">720p · 30 fps</option>
+        <option value="1080p30">1080p · 30 fps</option>
+        <option value="1080p60">1080p · 60 fps</option>
+        <option value="1440p60" data-t="q1440">1440p · 60 fps (нужен хороший аплинк)</option>
+      </select>
+    </label>
+    <label class="field"><span data-th="echoLbl">антиэхо демки <em>(чтобы собеседники не слышали себя при показе всего экрана)</em></span>
+      <select id="echoSel">
+        <option value="auto" data-t="echoOn">вкл — вычитать голоса из звука демки (рекомендуется)</option>
+        <option value="off" data-t="echoOff">выкл</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="relaySet"><span data-t="relaySet">скрывать мой ip (relay) — применяется при переподключении</span></label>
+    <label class="check"><input type="checkbox" id="soundsInput"><span data-t="sounds">звуки входа/выхода</span></label>
+    <p class="fine" data-th="shareHint">звук демки: выбирай <b>вкладку</b>, <b>окно</b> или <b>весь экран</b> и включай галочку «поделиться звуком». вкладка и окно дают звук только этого приложения — эха не бывает вообще.</p>
+    <div class="dlgbtns"><button class="btn primary" value="ok" data-t="done">готово</button></div>
+  </form>
+</dialog>
+
+<div class="toasts" id="toasts"></div>
+</body>
+</html>
