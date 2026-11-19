@@ -60,7 +60,7 @@ const STR = {
     shareRisk: 'внимание: звук всего экрана захвачен вместе с голосами из этой вкладки — собеседники могут слышать себя. включи «антиэхо демки» в настройках и перезапусти демку.',
     tooLong: (a, b) => `слишком длинно: ${a} / ${b} символов`, tooBig: n => `${n}: больше 8 МБ`,
     noMicBtn: 'нет микро', unmute: 'включить микро', deafOn: 'звук выкл', sound: 'звук', stopShare: 'остановить демку', share: 'демка',
-    you: ' (ты)', screenVol: 'громкость демки', focus: 'крупно', fullscreen: 'на весь экран',
+    you: ' (ты)', screenVol: 'громкость демки', muteScreen: 'выключить звук демки', unmuteScreen: 'включить звук демки', focus: 'крупно', fullscreen: 'на весь экран',
     connFail: 'соединение не удалось, пробую ещё…', connecting: 'соединение…', voiceVol: 'громкость голоса',
     alone: 'тут пока только ты. скопируй ссылку и отправь её — по ней можно зайти.', default: 'по умолчанию',
     micErr: 'микрофон: ', qualLater: 'качество применится к следующей демке', echoLater: 'применится при следующем запуске демки',
@@ -99,7 +99,7 @@ const STR = {
     shareRisk: 'heads up: whole-screen audio is captured together with voices from this tab — others may hear themselves. turn on “screen share anti-echo” in settings and restart the share.',
     tooLong: (a, b) => `too long: ${a} / ${b} characters`, tooBig: n => `${n}: over 8 MB`,
     noMicBtn: 'no mic', unmute: 'unmute', deafOn: 'sound off', sound: 'sound', stopShare: 'stop sharing', share: 'share',
-    you: ' (you)', screenVol: 'screen volume', focus: 'focus', fullscreen: 'fullscreen',
+    you: ' (you)', screenVol: 'screen volume', muteScreen: 'mute screen audio', unmuteScreen: 'unmute screen audio', focus: 'focus', fullscreen: 'fullscreen',
     connFail: 'connection failed, retrying…', connecting: 'connecting…', voiceVol: 'voice volume',
     alone: 'it\'s just you here. copy the link and send it — anyone with it can join.', default: 'default',
     micErr: 'microphone: ', qualLater: 'quality applies to the next screen share', echoLater: 'applies next time you start sharing',
@@ -139,6 +139,7 @@ const ICONS = {
   full: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
   focus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="13" height="18" rx="2"/><path d="M20 3v18"/></svg>',
   vol: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>',
+  volx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6"/></svg>',
   file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
 };
 const icon = name => { const i = document.createElement('i'); i.dataset.i = name; i.innerHTML = ICONS[name] || ''; return i; };
@@ -865,7 +866,7 @@ function renderTiles() {
         node.classList.remove('idle');
         clearTimeout(idleT);
         if (document.fullscreenElement === node) idleT = setTimeout(() => {
-          if (document.fullscreenElement === node && !node.querySelector('.tools:hover, input:active')) node.classList.add('idle');
+          if (document.fullscreenElement === node && !node.querySelector('.tools:hover, input:active, .ctxvol')) node.classList.add('idle');
           else wake();
         }, 2500);
       };
@@ -905,8 +906,11 @@ function buildTools(t, w) {
     const wrap = el('div', 'tvol'); wrap.append(icon('vol'));
     const r = document.createElement('input'); r.type = 'range'; r.min = 0; r.max = 100; r.value = Math.round(w.peer.screenVolume * 100);
     r.title = tr('screenVol');
-    r.oninput = () => { w.peer.screenVolume = r.value / 100; renderAudio(); };
+    r.oninput = () => setScreenVol(t, w.peer, r.value / 100);
     wrap.append(r); t.tools.append(wrap);
+    t.volRange = r;
+    // right click anywhere on the stream → small volume popup at the cursor
+    t.node.oncontextmenu = e => { e.preventDefault(); openVolMenu(t, w.peer, e); };
   }
   const f = el('button', 'iconbtn'); f.title = tr('focus'); f.append(icon('focus'));
   f.onclick = e => { e.stopPropagation(); S.focus = S.focus === w.key ? null : w.key; renderTiles(); };
@@ -914,6 +918,47 @@ function buildTools(t, w) {
   fs.onclick = e => { e.stopPropagation(); fullscreen(t.node); };
   t.tools.append(f, fs);
 }
+function setScreenVol(t, peer, v) {
+  v = clamp(Math.round(v * 100) / 100, 0, 1);
+  if (v > 0) peer.screenVolPrev = v;
+  peer.screenVolume = v;
+  if (t.volRange) t.volRange.value = Math.round(v * 100);
+  t.volMenu?.sync();
+  renderAudio();
+}
+function closeVolMenu() { document.querySelectorAll('.tile .ctxvol').forEach(m => m.remove()); for (const t of tileNodes.values()) t.volMenu = null; }
+function openVolMenu(t, peer, e) {
+  closeVolMenu();
+  const m = el('div', 'ctxvol');
+  const head = el('div', 'cvhead', tr('screenVol') + ' · ' + peer.nick);
+  const row = el('div', 'cvrow');
+  const mute = el('button', 'iconbtn'); mute.type = 'button';
+  const r = document.createElement('input'); r.type = 'range'; r.min = 0; r.max = 100;
+  const pct = el('span', 'cvpct');
+  row.append(mute, r, pct);
+  m.append(head, row);
+  const sync = () => {
+    const v = Math.round(peer.screenVolume * 100);
+    r.value = v; pct.textContent = v + '%';
+    mute.textContent = ''; mute.append(icon(v ? 'vol' : 'volx')); mute.title = v ? tr('muteScreen') : tr('unmuteScreen');
+    mute.classList.toggle('off', !v);
+  };
+  r.oninput = () => setScreenVol(t, peer, r.value / 100);
+  mute.onclick = () => setScreenVol(t, peer, peer.screenVolume ? 0 : (peer.screenVolPrev || 1));
+  m.onwheel = ev => { ev.preventDefault(); setScreenVol(t, peer, peer.screenVolume + (ev.deltaY < 0 ? .05 : -.05)); };
+  m.oncontextmenu = ev => { ev.preventDefault(); ev.stopPropagation(); };
+  m.onmousedown = m.ondblclick = ev => ev.stopPropagation();
+  t.volMenu = { sync }; sync();
+  t.node.append(m);
+  // place at the cursor, kept inside the tile
+  const b = t.node.getBoundingClientRect();
+  const x = clamp(e.clientX - b.left, 8, b.width - m.offsetWidth - 8), y = clamp(e.clientY - b.top, 8, b.height - m.offsetHeight - 8);
+  m.style.left = x + 'px'; m.style.top = y + 'px';
+  r.focus();
+}
+document.addEventListener('mousedown', e => { if (!e.target.closest?.('.ctxvol')) closeVolMenu(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeVolMenu(); });
+
 function fullscreen(node) {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
   else node.requestFullscreen?.().catch(() => { });

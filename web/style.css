@@ -199,3 +199,11 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
   .tiles.focus .tile:not(.big) { display: none; }
   .pill.lock { display: none; }
 }
+.tile .ctxvol { position: absolute; z-index: 5; min-width: 230px; background: rgba(20,23,30,.96); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 28px rgba(0,0,0,.5); cursor: default; }
+.tile .ctxvol .cvhead { font-size: 12px; color: var(--dim); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.tile .ctxvol .cvrow { display: flex; align-items: center; gap: 10px; }
+.tile .ctxvol input[type=range] { flex: 1; width: 140px; accent-color: var(--acc); }
+.tile .ctxvol .iconbtn { width: 34px; height: 34px; flex: none; }
+.tile .ctxvol .iconbtn.off { color: var(--bad); }
+.tile .ctxvol .cvpct { font-size: 12px; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
