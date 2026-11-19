@@ -60,7 +60,7 @@ const STR = {
     shareRisk: 'внимание: звук всего экрана захвачен вместе с голосами из этой вкладки — собеседники могут слышать себя. включи «антиэхо демки» в настройках и перезапусти демку.',
     tooLong: (a, b) => `слишком длинно: ${a} / ${b} символов`, tooBig: n => `${n}: больше 8 МБ`,
     noMicBtn: 'нет микро', unmute: 'включить микро', deafOn: 'звук выкл', sound: 'звук', stopShare: 'остановить демку', share: 'демка',
-    you: ' (ты)', screenVol: 'громкость демки', muteScreen: 'выключить звук демки', unmuteScreen: 'включить звук демки', focus: 'крупно', fullscreen: 'на весь экран',
+    you: ' (ты)', zoomReset: 'сбросить зум (колёсико — зум, перетаскивание — сдвиг)', screenVol: 'громкость демки', muteScreen: 'выключить звук демки', unmuteScreen: 'включить звук демки', focus: 'крупно', fullscreen: 'на весь экран',
     connFail: 'соединение не удалось, пробую ещё…', connecting: 'соединение…', voiceVol: 'громкость голоса',
     alone: 'тут пока только ты. скопируй ссылку и отправь её — по ней можно зайти.', default: 'по умолчанию',
     micErr: 'микрофон: ', qualLater: 'качество применится к следующей демке', echoLater: 'применится при следующем запуске демки',
@@ -99,7 +99,7 @@ const STR = {
     shareRisk: 'heads up: whole-screen audio is captured together with voices from this tab — others may hear themselves. turn on “screen share anti-echo” in settings and restart the share.',
     tooLong: (a, b) => `too long: ${a} / ${b} characters`, tooBig: n => `${n}: over 8 MB`,
     noMicBtn: 'no mic', unmute: 'unmute', deafOn: 'sound off', sound: 'sound', stopShare: 'stop sharing', share: 'share',
-    you: ' (you)', screenVol: 'screen volume', muteScreen: 'mute screen audio', unmuteScreen: 'unmute screen audio', focus: 'focus', fullscreen: 'fullscreen',
+    you: ' (you)', zoomReset: 'reset zoom (wheel to zoom, drag to pan)', screenVol: 'screen volume', muteScreen: 'mute screen audio', unmuteScreen: 'unmute screen audio', focus: 'focus', fullscreen: 'fullscreen',
     connFail: 'connection failed, retrying…', connecting: 'connecting…', voiceVol: 'voice volume',
     alone: 'it\'s just you here. copy the link and send it — anyone with it can join.', default: 'default',
     micErr: 'microphone: ', qualLater: 'quality applies to the next screen share', echoLater: 'applies next time you start sharing',
@@ -875,6 +875,7 @@ function renderTiles() {
       node.addEventListener('fullscreenchange', wake);
       t = { node, video, label, tools, volKey: null };
       tileNodes.set(w.key, t);
+      if (w.kind === 'screen') attachZoom(t);
       buildTools(t, w);
     }
     if (t.video.srcObject !== w.stream) { t.video.srcObject = w.stream; t.video.play().catch(() => { }); }
@@ -918,6 +919,46 @@ function buildTools(t, w) {
   fs.onclick = e => { e.stopPropagation(); fullscreen(t.node); };
   t.tools.append(f, fs);
 }
+/** Discord-style zoom on a screen share: wheel zooms at the cursor, drag pans, badge resets. */
+function attachZoom(t) {
+  const { node, video } = t;
+  const z = { s: 1, x: 0, y: 0 }; // x/y = translation as a fraction of the tile size
+  const badge = el('button', 'zoomind'); badge.type = 'button'; badge.hidden = true; node.append(badge);
+  const apply = () => {
+    const w = node.clientWidth, h = node.clientHeight;
+    z.x = clamp(z.x, 1 - z.s, 0); z.y = clamp(z.y, 1 - z.s, 0);
+    video.style.transform = z.s === 1 ? '' : `translate(${z.x * w}px, ${z.y * h}px) scale(${z.s})`;
+    node.classList.toggle('zoomed', z.s > 1);
+    badge.hidden = z.s === 1; badge.textContent = z.s.toFixed(1) + '× ✕'; badge.title = tr('zoomReset');
+  };
+  const zoomAt = (ns, cx, cy) => { // cx/cy: cursor position as a fraction of the tile
+    ns = clamp(ns, 1, 8); if (Math.abs(ns - 1) < .02) ns = 1;
+    z.x = cx - (cx - z.x) * ns / z.s; z.y = cy - (cy - z.y) * ns / z.s; z.s = ns;
+    if (ns === 1) z.x = z.y = 0;
+    apply();
+  };
+  t.zoomReset = () => { z.s = 1; z.x = z.y = 0; apply(); };
+  node.addEventListener('wheel', e => {
+    if (e.target.closest('.tools, .ctxvol')) return;
+    e.preventDefault();
+    const b = node.getBoundingClientRect();
+    zoomAt(z.s * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0015)), (e.clientX - b.left) / b.width, (e.clientY - b.top) / b.height);
+  }, { passive: false });
+  let drag = null;
+  node.addEventListener('mousedown', e => {
+    if (e.button !== 0 || z.s === 1 || e.target.closest('.tools, .ctxvol, .zoomind')) return;
+    e.preventDefault(); drag = { x: e.clientX, y: e.clientY, zx: z.x, zy: z.y }; node.classList.add('panning');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!drag) return;
+    z.x = drag.zx + (e.clientX - drag.x) / node.clientWidth; z.y = drag.zy + (e.clientY - drag.y) / node.clientHeight; apply();
+  });
+  window.addEventListener('mouseup', () => { if (drag) { drag = null; node.classList.remove('panning'); } });
+  badge.onclick = e => { e.stopPropagation(); t.zoomReset(); };
+  badge.ondblclick = e => e.stopPropagation();
+  new ResizeObserver(apply).observe(node);
+}
+
 function setScreenVol(t, peer, v) {
   v = clamp(Math.round(v * 100) / 100, 0, 1);
   if (v > 0) peer.screenVolPrev = v;
@@ -945,7 +986,7 @@ function openVolMenu(t, peer, e) {
   };
   r.oninput = () => setScreenVol(t, peer, r.value / 100);
   mute.onclick = () => setScreenVol(t, peer, peer.screenVolume ? 0 : (peer.screenVolPrev || 1));
-  m.onwheel = ev => { ev.preventDefault(); setScreenVol(t, peer, peer.screenVolume + (ev.deltaY < 0 ? .05 : -.05)); };
+  m.onwheel = ev => { ev.preventDefault(); ev.stopPropagation(); setScreenVol(t, peer, peer.screenVolume + (ev.deltaY < 0 ? .05 : -.05)); };
   m.oncontextmenu = ev => { ev.preventDefault(); ev.stopPropagation(); };
   m.onmousedown = m.ondblclick = ev => ev.stopPropagation();
   t.volMenu = { sync }; sync();
